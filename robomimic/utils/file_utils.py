@@ -3,26 +3,26 @@ A collection of utility functions for working with files, such as reading metada
 demonstration datasets, loading model checkpoints, or downloading dataset files.
 """
 import os
-import h5py
 import json
 import time
 import urllib.request
-import numpy as np
 from collections import OrderedDict
-from tqdm import tqdm
-
-import pandas as pd
-import mmap
 import re
+import mmap
 from pathlib import Path
 import tarfile
 from io import BytesIO
 
 import torch
+from tqdm import tqdm
+import h5py
+import numpy as np
+import pandas as pd
 
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.utils.env_utils as EnvUtils
 import robomimic.utils.torch_utils as TorchUtils
+import robomimic.utils.log_utils as LogUtils
 from robomimic.config import config_factory
 from robomimic.algo import algo_factory
 from robomimic.algo import RolloutPolicy
