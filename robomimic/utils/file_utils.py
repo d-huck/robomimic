@@ -98,7 +98,7 @@ def get_env_metadata_from_dataset(dataset_path):
     """
     if dataset_path.endswith('.robo'):
         return get_env_metadata_from_robo_dataset(dataset_path)
-        
+
     dataset_path = os.path.expanduser(dataset_path)
     f = h5py.File(dataset_path, "r")
     env_meta = json.loads(f["data"].attrs["env_args"])
@@ -554,6 +554,31 @@ def download_url(url, download_dir, check_overwrite=True):
     with DownloadProgressBar(unit='B', unit_scale=True,
                              miniters=1, desc=fname) as t:
         urllib.request.urlretrieve(url, filename=file_to_write, reporthook=t.update_to)
+
+def make_dataframe_from_logs(path: str) -> pd.DataFrame or None:
+    """
+    Helper method to parse logs and lift the timing and memory usage. Useful 
+    for profiling and comparing the stats for multiple runs when tweaking efficiency
+    of data loading.
+
+    Args:
+        path (str): path of the log file to be parsed
+
+    Returns:
+        pd.DataFrame or None: pandas dataframe storing the stats.
+    """
+    out = None
+    re_str = r"Train Epoch \d+\n(\{(\n.*){11}\n\})\n\nEpoch \d+ Memory Usage: (\d+) MB"
+    with open(path, 'r+') as f:
+        data = mmap.mmap(f.fileno(), 0).read().decode('utf-8')
+        groups = re.findall(re_str, data)
+        out = []
+        for group in groups:
+            stats = json.loads(group[0])
+            stats['Memory_Used'] = int(group[-1])
+            out.append(stats)
+    df = pd.DataFrame(out)
+    return df
 
 def hdf5_to_npz_tar(h5_path, out_file=None):
     """Converts hdf5 file to numpy tarball for use with the Data Pipelines
