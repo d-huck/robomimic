@@ -62,6 +62,25 @@ def create_hdf5_filter_key(hdf5_path, demo_keys, key_name):
     f.close()
     return ep_lengths
 
+def get_env_metadata_from_robo_dataset(dataset_path):
+    """ 
+    Retrieves env metadata from dataset. For use with ROBO dataset format.
+
+    Args:
+        dataset_path (str): path to dataset. 
+
+    Returns:
+        env_meta (dict): environment metadata. contains 3 keys:
+
+            :`'env_name`: name of environment
+            :`'type'`: type of environment, should be a value in EB.EnvType
+            :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
+    """
+    dataset_path = os.path.expanduser(dataset_path)
+    with tarfile.open(dataset_path, 'r') as f:
+        env_meta = json.loads(f.extractfile('data/env_args.json').read())
+    return env_meta
+
 
 def get_env_metadata_from_dataset(dataset_path):
     """
@@ -77,6 +96,9 @@ def get_env_metadata_from_dataset(dataset_path):
             :`'type'`: type of environment, should be a value in EB.EnvType
             :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
     """
+    if dataset_path.endswith('.robo'):
+        return get_env_metadata_from_robo_dataset(dataset_path)
+        
     dataset_path = os.path.expanduser(dataset_path)
     f = h5py.File(dataset_path, "r")
     env_meta = json.loads(f["data"].attrs["env_args"])
@@ -158,7 +180,7 @@ def get_shape_metadata_from_dataset(dataset_path, all_obs_keys=None, verbose=Fal
 
     if dataset_path.endswith('robo'):
         return get_shape_metadata_from_robo_dataset(dataset_path, all_obs_keys, verbose)
-        
+
     shape_meta = {}
 
     # read demo file for some metadata
