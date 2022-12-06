@@ -476,3 +476,70 @@ def download_url(url, download_dir, check_overwrite=True):
     with DownloadProgressBar(unit='B', unit_scale=True,
                              miniters=1, desc=fname) as t:
         urllib.request.urlretrieve(url, filename=file_to_write, reporthook=t.update_to)
+
+def hdf5_to_npz_tar(h5_path, out_file=None):
+    """Converts hdf5 file to numpy tarball for use with the Data Pipelines
+
+    Args:
+        h5_path (str): Path to the HDF5 file to be opened and changed
+        out_dir (str, optional): Optional directory path. If not set, will 
+        output in the same directory as the input h5 file. Defaults to None.
+    
+    Returns:
+        None
+    """
+    if out_file is None:
+        out_parent = Path(h5_path).parent
+        filename = h5_path.split('/')[-1].split('.')[0]
+        out_file = f"{out_parent}/{filename}.robo"
+
+    tmp_dir = f"{Path(h5_path).parent}/data"
+    Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+    # print(tmp_dir)
+    # print(out_file)
+
+    h5 = h5py.File(h5_path, 'r')
+
+    # get env_args
+    env_args = json.loads(h5['data'].attrs['env_args'])
+    with open(f"{tmp_dir}/env_args.json", 'w') as f:
+        json.dump(env_args, f)
+
+    # handle mask
+    mask = h5['mask']
+    mask_dict = {}
+    for msk in mask:
+        item = mask[msk][()]
+        item = [x.decode('utf-8') for x in item]
+        mask_dict[msk] = item
+    with open(f"{tmp_dir}/mask.npz", 'wb') as f:
+        np.savez(f, **mask_dict)
+
+    data = h5['data']
+    ## Print here?
+    for demo in LogUtils.custom_tqdm(data):
+        demo_dict = {}
+        for item in data[demo]:
+            if item != 'obs' and item != 'next_obs':
+                demo_dict[item] = data[demo][item][()]
+            else:
+                for obs in data[demo][item]:
+                    demo_dict[f"{item}_{obs}"] = data[demo][item][obs][()]
+        with open(f"{tmp_dir}/{demo}.npz", "wb") as f:
+            np.savez(f, **demo_dict)
+    
+    h5.close()
+    cwd = os.getcwd()
+    tmp_dir = Path(tmp_dir)
+    os.chdir(tmp_dir.parent)
+    # tarball and delete everything in tmp
+    with tarfile.open(out_file, 'w') as tar:
+        files = [str(file.relative_to(tmp_dir.parent)) for file in tmp_dir.iterdir()]
+        for file in files:
+            tar.add(file)
+
+    for item in tmp_dir.iterdir():
+        item.unlink()
+
+    tmp_dir.rmdir()
+    os.chdir(cwd)
