@@ -83,6 +83,59 @@ def get_env_metadata_from_dataset(dataset_path):
     f.close()
     return env_meta
 
+def get_shape_metadata_from_robo_dataset(dateset_path, all_obs_keys=None, verbose=False):
+    """
+    Retrieves shape metadata from dataset.
+
+    Args:
+        dataset_path (str): path to dataset
+        all_obs_keys (list): list of all modalities used by the model. If not provided, all modalities
+            present in the file are used.
+        verbose (bool): if True, include print statements
+
+    Returns:
+        shape_meta (dict): shape metadata. Contains the following keys:
+
+            :`'ac_dim'`: action space dimension
+            :`'all_shapes'`: dictionary that maps observation key string to shape
+            :`'all_obs_keys'`: list of all observation modalities used
+            :`'use_images'`: bool, whether or not image modalities are present
+    """
+    shape_meta = {}
+    with tarfile.open(dateset_path, 'r') as tar:
+        members = tar.getnames()
+        demo = None
+        for member in members:
+            if 'demo' in member:
+                demo_bytes = tar.extractfile(member).read()
+                demo = np.load(BytesIO(demo_bytes), allow_pickle=True)
+                break
+
+    shape_meta['ac_dim'] = demo['actions'].shape[1]
+
+    all_shapes = OrderedDict()
+
+    if all_obs_keys is None:
+        all_obs_keys = [key for key in demo.keys() if key.startswith('obs_')]
+        print(all_obs_keys)
+    else:
+        all_obs_keys = [f"obs_{key}" for key in all_obs_keys]
+
+    for k in sorted(all_obs_keys):
+        initial_shape = demo[k].shape[1:]
+        if verbose:
+            print(f"obs key {k[4:]} with shape {initial_shape}")
+        all_shapes[k] = ObsUtils.get_processed_shape(
+            obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k[4:]],
+            input_shape=initial_shape
+        )
+    all_obs_keys = [k[4:] for k in all_obs_keys]
+    shape_meta['all_shapes'] = all_shapes
+    shape_meta['all_obs_keys'] = all_obs_keys
+    shape_meta['use_images'] = ObsUtils.has_modality("rgb", all_obs_keys)
+
+    return shape_meta
+
 
 def get_shape_metadata_from_dataset(dataset_path, all_obs_keys=None, verbose=False):
     """
@@ -103,6 +156,9 @@ def get_shape_metadata_from_dataset(dataset_path, all_obs_keys=None, verbose=Fal
             :`'use_images'`: bool, whether or not image modalities are present
     """
 
+    if dataset_path.endswith('robo'):
+        return get_shape_metadata_from_robo_dataset(dataset_path, all_obs_keys, verbose)
+        
     shape_meta = {}
 
     # read demo file for some metadata
