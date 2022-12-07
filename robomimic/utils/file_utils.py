@@ -630,7 +630,7 @@ def hdf5_to_npz_tar(h5_path, out_file=None):
     demo_attrs = {}
     ## Print here?
     for demo in LogUtils.custom_tqdm(data):
-        demo_idx = int(demo.split('_')[1])
+        demo_idx = demo
         demo_attrs[demo_idx] = {}
         for key in data[demo].attrs.keys():
             val = data[demo].attrs[key]
