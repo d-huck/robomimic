@@ -6,7 +6,7 @@ import numpy as np
 
 from torchdata.datapipes.iter import IterableWrapper, FileOpener, TarArchiveLoader
 from torchdata.datapipes.iter import Demultiplexer, Mapper, InMemoryCacheHolder
-from torchdata.datapipes.iter import Shuffler, Batcher, Collator
+from torchdata.datapipes.iter import Shuffler, Batcher, Collator, JsonParser
 
 import robomimic.utils.obs_utils as ObsUtils
 import robomimic.utils.log_utils as LogUtils
@@ -89,18 +89,17 @@ def normalize_obs(demos):
 
     # Run through all trajectories. For each one, compute minimal observation statistics, and then aggregate
     # with the previous statistics.
-    
-    assert DP_CONFIG["obs_keys"] is not None and isinstance(DP_CONFIG["obs_keys"], list), "OBS_KEYS has not been initialized."
-    obs_traj = {k: demos[0][k] for k in DP_CONFIG["obs_keys"]}
-    # obs_traj = {k: self.hdf5_file["data/{}/obs/{}".format(ep, k)][()].astype('float32') for k in self.obs_keys}
-    obs_traj = ObsUtils.process_obs_dict(obs_traj)
-    merged_stats = _compute_traj_stats(obs_traj)
+    assert DP_CONFIG["obs_keys"] is not None and isinstance(DP_CONFIG["obs_keys"], tuple), "OBS_KEYS has not been initialized."
     print("SequenceDataPipeline: normalizing observations...")
-    for demo in LogUtils.custom_tqdm(demos[1:]):
-        obs_traj = {k: demo[k] for k in DP_CONFIG["obs_keys"]}
+    merged_stats = {}
+    for i, demo in LogUtils.custom_tqdm(enumerate(demos)):
+        obs_traj = {k: demo[1]['obs'][k] for k in DP_CONFIG["obs_keys"]}
         obs_traj = ObsUtils.process_obs_dict(obs_traj)
-        traj_stats = _compute_traj_stats(obs_traj)
-        merged_stats = _aggregate_traj_stats(merged_stats, traj_stats)
+        if i == 0:
+            merged_stats = _compute_traj_stats(obs_traj)
+        else:
+            traj_stats = _compute_traj_stats(obs_traj)
+            merged_stats = _aggregate_traj_stats(merged_stats, traj_stats)
 
     obs_normalization_stats = { k : {} for k in merged_stats }
     for k in merged_stats:
@@ -141,13 +140,15 @@ def _unpack_data(data):
     return (int(index), out)
 
 def _split_data(data):
-    if "demo" in data[0]:
+    if "demo" in data[0] and data[0].endswith('npz'):
         return 0
     if data[0].endswith('mask.npz'):
         return 1
-    if data[0].endswith('demo_attrs.json')
+    if data[0].endswith('demo_attrs.json'):
+        print("Got it")
         return 2
     return 3
+
 
 def create_data_pipeline(path, config, all_obs_keys):
     """
@@ -175,8 +176,9 @@ def create_data_pipeline(path, config, all_obs_keys):
     demos_dp, mask_dp, demo_attrs, _ = Demultiplexer(dp, num_instances=4, classifier_fn=_split_data)
 
     # preproc pipeline
-    with open(demo_attrs) as f:
-        DP_INFO["attributes"] = json.loads(f)
+    demo_attrs = JsonParser(demo_attrs)
+    DP_INFO["attributes"] = next(iter(demo_attrs))[1]
+
     demos_dp = Mapper(demos_dp, _unpack_data)
     # TODO: split train/validation sets
 
