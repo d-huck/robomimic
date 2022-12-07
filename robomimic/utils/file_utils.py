@@ -598,6 +598,7 @@ def hdf5_to_npz_tar(h5_path, out_file=None):
     Returns:
         None
     """
+    h5_path = os.path.abspath(h5_path)
     if out_file is None:
         out_parent = Path(h5_path).parent
         filename = h5_path.split('/')[-1].split('.')[0]
@@ -626,8 +627,16 @@ def hdf5_to_npz_tar(h5_path, out_file=None):
         np.savez(f, **mask_dict)
 
     data = h5['data']
+    demo_attrs = {}
     ## Print here?
     for demo in LogUtils.custom_tqdm(data):
+        demo_idx = int(demo.split('_')[1])
+        demo_attrs[demo_idx] = {}
+        for key in data[demo].attrs.keys():
+            val = data[demo].attrs[key]
+            if key == 'num_samples':
+                val = int(val)
+            demo_attrs[demo_idx][key] = val
         demo_dict = {}
         for item in data[demo]:
             if item != 'obs' and item != 'next_obs':
@@ -639,9 +648,15 @@ def hdf5_to_npz_tar(h5_path, out_file=None):
             np.savez(f, **demo_dict)
     
     h5.close()
+    # print(demo_attrs)
+    with open(f"{tmp_dir}/demo_attrs.json", 'w') as f:
+        json.dump(demo_attrs, f)
+
     cwd = os.getcwd()
     tmp_dir = Path(tmp_dir)
     os.chdir(tmp_dir.parent)
+
+
     # tarball and delete everything in tmp
     with tarfile.open(out_file, 'w') as tar:
         files = [str(file.relative_to(tmp_dir.parent)) for file in tmp_dir.iterdir()]
