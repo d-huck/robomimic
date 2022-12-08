@@ -17,6 +17,7 @@ from collections import OrderedDict
 import torch
 
 import robomimic
+import robomimic.utils.data_pipeline as DataPipeline
 import robomimic.utils.tensor_utils as TensorUtils
 import robomimic.utils.log_utils as LogUtils
 
@@ -133,6 +134,9 @@ def dataset_factory(config, obs_keys, filter_by_attribute=None, dataset_path=Non
     """
     if dataset_path is None:
         dataset_path = config.train.data
+
+    if config.train.use_pipeline:
+        return DataPipeline.create_data_pipeline(dataset_path, config, obs_keys)
 
     ds_kwargs = dict(
         hdf5_path=dataset_path,
