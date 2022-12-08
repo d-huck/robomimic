@@ -244,10 +244,6 @@ def get_item(data):
     demo_length_offset = 0 if DP_STATE["pad_seq_length"] else (DP_STATE["seq_length"] - 1)
     end_index_in_demo = demo_length - demo_length_offset
 
-    goal_index = None 
-    if DP_STATE["goal_mode"] == "last":
-        goal_index = end_index_in_demo - 1
-
     out = _get_sequence_from_demo(
             demo_id, 
             index_in_demo=index_in_demo, 
@@ -255,6 +251,10 @@ def get_item(data):
             num_frames_to_stack=DP_STATE["n_frame_stack"] - 1,
             seq_length=DP_STATE["seq_length"]
         )
+
+    goal_index = None 
+    if DP_STATE["goal_mode"] == "last":
+        goal_index = end_index_in_demo - 1
 
     out["obs"] = _get_sequence_from_demo(
             demo_id,
@@ -264,6 +264,7 @@ def get_item(data):
             seq_length=DP_STATE["seq_length"],
             obs="obs"
     )
+    out["obs"] = ObsUtils.process_obs_dict(out["obs"])
 
     if DP_STATE["normalize_obs"]:
         out["obs"] = ObsUtils.normalize_obs(out["obs"], obs_normalization_stats=DP_STATE["normalization_stats"])
@@ -277,6 +278,7 @@ def get_item(data):
             seq_length=DP_STATE["seq_length"],
             obs="next_obs"
         )
+        out["next_obs"] = ObsUtils.process_obs_dict(out["next_obs"])
 
         if DP_STATE["normalize_obs"]:
             out["next_obs"] = ObsUtils.normalize_obs(out["obs"], obs_normalization_stats=DP_STATE["normalization_stats"])
@@ -290,6 +292,8 @@ def get_item(data):
             seq_length=DP_STATE["seq_length"],
             obs="next_obs"
         )
+
+        goal = ObsUtils.process_obs_dict(goal)
 
         if DP_STATE["normalize_obs"]:
             goal = ObsUtils.normalize_obs(goal, obs_normalization_stats=DP_STATE["normalization_stats"])
@@ -335,7 +339,7 @@ def create_data_pipeline(path, config, all_obs_keys):
     if DP_STATE["normalize_obs"]:
         normalize_obs(demos_dp)
     
-    # demos_dp = InMemoryCacheHolder(demos_dp)  # TODO: add size param to config
+    demos_dp = InMemoryCacheHolder(demos_dp)  # TODO: add size param to config
     DP_STATE["demos_dp"] = demos_dp.to_map_datapipe()
 
     output = IterableWrapper([(k, v) for k, v in DP_STATE["index_to_demo_id"].items()])
@@ -344,8 +348,9 @@ def create_data_pipeline(path, config, all_obs_keys):
     # demos_dp = Mapper(demos_dp, get_item)
 
     # output pipeline
-    output = Batcher(output, batch_size=batch_size, drop_last=True)
-    output = Collator(output, collate_fn=default_collate)
+    if batch_size and batch_size > 1:
+        output = Batcher(output, batch_size=batch_size, drop_last=True)
+        output = Collator(output, collate_fn=default_collate)
 
     return output
 
