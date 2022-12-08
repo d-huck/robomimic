@@ -30,6 +30,7 @@ import psutil
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from torchdata.dataloader2 import DataLoader2
 
 import robomimic
 import robomimic.utils.train_utils as TrainUtils
@@ -65,7 +66,7 @@ def train(config, device):
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations)
     ObsUtils.initialize_obs_utils_with_config(config)
 
-    # make sure the dataset exists
+    # make sure the dataset exis ts
     dataset_path = os.path.expanduser(config.train.data)
     if not os.path.exists(dataset_path):
         raise Exception("Dataset at provided path {} not found!".format(dataset_path))
@@ -130,40 +131,48 @@ def train(config, device):
     # load training data
     trainset, validset = TrainUtils.load_data_for_training(
         config, obs_keys=shape_meta["all_obs_keys"])
-    train_sampler = trainset.get_dataset_sampler()
+    
     print("\n============= Training Dataset =============")
     print(trainset)
     print("")
 
-    # maybe retreve statistics for normalizing observations
-    obs_normalization_stats = None
-    if config.train.hdf5_normalize_obs:
-        obs_normalization_stats = trainset.get_obs_normalization_stats()
-
     # initialize data loaders
-    train_loader = DataLoader(
-        dataset=trainset,
-        sampler=train_sampler,
-        batch_size=config.train.batch_size,
-        shuffle=(train_sampler is None),
-        num_workers=config.train.num_data_workers,
-        drop_last=True
-    )
+    if config.train.use_pipeline:
+        train_loader = DataLoader2(trainset)
+        if config.experiment.validate:
+            valid_loader = DataLoader2(validset)
+        else:
+            valid_loader = None
+    else:
+        # maybe retreve statistics for normalizing observations
+        obs_normalization_stats = None
+        if config.train.hdf5_normalize_obs:
+            obs_normalization_stats = trainset.get_obs_normalization_stats()
 
-    if config.experiment.validate:
-        # cap num workers for validation dataset at 1
-        num_workers = min(config.train.num_data_workers, 1)
-        valid_sampler = validset.get_dataset_sampler()
-        valid_loader = DataLoader(
-            dataset=validset,
-            sampler=valid_sampler,
+        train_sampler = trainset.get_dataset_sampler()
+        train_loader = DataLoader(
+            dataset=trainset,
+            sampler=train_sampler,
             batch_size=config.train.batch_size,
-            shuffle=(valid_sampler is None),
-            num_workers=num_workers,
+            shuffle=(train_sampler is None),
+            num_workers=config.train.num_data_workers,
             drop_last=True
         )
-    else:
-        valid_loader = None
+
+        if config.experiment.validate:
+            # cap num workers for validation dataset at 1
+            num_workers = min(config.train.num_data_workers, 1)
+            valid_sampler = validset.get_dataset_sampler()
+            valid_loader = DataLoader(
+                dataset=validset,
+                sampler=valid_sampler,
+                batch_size=config.train.batch_size,
+                shuffle=(valid_sampler is None),
+                num_workers=num_workers,
+                drop_last=True
+            )
+        else:
+            valid_loader = None
 
     # main training loop
     best_valid_loss = None
@@ -174,6 +183,10 @@ def train(config, device):
     # number of learning steps per epoch (defaults to a full dataset pass)
     train_num_steps = config.experiment.epoch_every_n_steps
     valid_num_steps = config.experiment.validation_epoch_every_n_steps
+
+    if config.train.use_pipeline:
+        assert train_num_steps is not None, "Must set experiment.epoch_every_n_steps when using pipelines"
+        assert valid_num_steps is not None, "Must set experiment.validation_every_n_steps when using pipelines"
 
     for epoch in range(1, config.train.num_epochs + 1): # epoch numbers start at 1
         step_log = TrainUtils.run_epoch(model=model, data_loader=train_loader, epoch=epoch, num_steps=train_num_steps)
