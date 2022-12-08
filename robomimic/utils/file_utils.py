@@ -131,6 +131,8 @@ def get_shape_metadata_from_robo_dataset(dateset_path, all_obs_keys=None, verbos
             :`'use_images'`: bool, whether or not image modalities are present
     """
     shape_meta = {}
+
+    # read demo file for some metadata
     with tarfile.open(dateset_path, 'r') as tar:
         members = tar.getnames()
         demo = None
@@ -139,22 +141,23 @@ def get_shape_metadata_from_robo_dataset(dateset_path, all_obs_keys=None, verbos
                 demo_bytes = tar.extractfile(member).read()
                 demo = np.load(BytesIO(demo_bytes), allow_pickle=True)
                 break
-
+    # print("-----> DEMO KEYS:", demo['actions'])
     shape_meta['ac_dim'] = demo['actions'].shape[1]
 
     all_shapes = OrderedDict()
 
     if all_obs_keys is None:
         all_obs_keys = [key for key in demo.keys() if key.startswith('obs_')]
-        print(all_obs_keys)
+        
     else:
         all_obs_keys = [f"obs_{key}" for key in all_obs_keys]
+
 
     for k in sorted(all_obs_keys):
         initial_shape = demo[k].shape[1:]
         if verbose:
             print(f"obs key {k[4:]} with shape {initial_shape}")
-        all_shapes[k] = ObsUtils.get_processed_shape(
+        all_shapes[k[4:]] = ObsUtils.get_processed_shape(
             obs_modality=ObsUtils.OBS_KEYS_TO_MODALITIES[k[4:]],
             input_shape=initial_shape
         )
